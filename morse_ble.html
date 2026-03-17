@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Morse Trainer</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --surface: #111418;
+    --border: #1e2530;
+    --green: #00ff88;
+    --green-dim: #00ff8840;
+    --green-glow: #00ff8820;
+    --amber: #ffb300;
+    --amber-dim: #ffb30030;
+    --red: #ff4444;
+    --text: #c8d8c0;
+    --text-dim: #4a5a48;
+    --mono: 'Share Tech Mono', monospace;
+    --display: 'Bebas Neue', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--mono); min-height: 100vh;
+    display: flex; flex-direction: column; overflow-x: hidden;
+  }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none; z-index: 100;
+  }
+  header {
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .logo { font-family: var(--display); font-size: 28px; letter-spacing: 4px; color: var(--green); text-shadow: 0 0 20px var(--green-dim); }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); transition: background 0.3s; flex-shrink: 0; }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .connect-btn {
+    background: none; border: 1px solid var(--green-dim); color: var(--green);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 2px;
+    padding: 6px 14px; cursor: pointer; border-radius: 2px;
+    transition: all 0.2s; text-transform: uppercase; flex-shrink: 0;
+  }
+  .connect-btn:hover { border-color: var(--green); background: var(--green-glow); }
+  .connect-btn:disabled { opacity: 0.4; cursor: default; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 24px; }
+  .tab {
+    padding: 12px 20px; font-family: var(--mono); font-size: 12px; letter-spacing: 2px;
+    color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all 0.2s; background: none; border-top: none; border-left: none; border-right: none;
+    text-transform: uppercase;
+  }
+  .tab.active { color: var(--green); border-bottom-color: var(--green); }
+  .tab:hover:not(.active) { color: var(--text); }
+  .panel { display: none; flex: 1; flex-direction: column; }
+  .panel.active { display: flex; }
+
+  /* DECODER */
+  #decoder-panel { padding: 20px; gap: 16px; }
+  .current-morse {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 16px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .morse-label { font-size: 10px; letter-spacing: 3px; color: var(--text-dim); text-transform: uppercase; }
+  .morse-symbols {
+    font-size: 40px; letter-spacing: 8px; color: var(--amber);
+    text-shadow: 0 0 16px var(--amber-dim); min-height: 50px; min-width: 160px;
+  }
+  .decoded-letter {
+    font-family: var(--display); font-size: 72px; color: var(--green);
+    text-shadow: 0 0 30px var(--green-dim); min-width: 72px; text-align: center;
+  }
+  @keyframes pop { 0% { transform: scale(1.4); } 100% { transform: scale(1); } }
+  .output-area {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 16px; overflow-y: auto;
+  }
+  .output-title { font-size: 10px; letter-spacing: 3px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 12px; }
+  #output-text { font-size: 24px; letter-spacing: 4px; line-height: 1.6; color: var(--green); word-break: break-all; }
+  .letter-entry { display: inline-block; animation: fadeIn 0.2s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  .history-row { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .history-morse { color: var(--amber); min-width: 70px; }
+  .history-letter { color: var(--green); font-size: 16px; min-width: 20px; }
+  .history-time { color: var(--text-dim); font-size: 10px; margin-left: auto; }
+
+  /* TRAINER */
+  #trainer-panel { padding: 20px; align-items: center; gap: 24px; }
+  .trainer-card {
+    width: 100%; max-width: 500px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 4px; padding: 32px; text-align: center;
+  }
+  .trainer-prompt-label { font-size: 10px; letter-spacing: 3px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 12px; }
+  .trainer-letter {
+    font-family: var(--display); font-size: 120px; line-height: 1;
+    color: var(--green); text-shadow: 0 0 40px var(--green-dim); margin-bottom: 8px; transition: color 0.2s;
+  }
+  .trainer-letter.correct { color: var(--green); text-shadow: 0 0 60px var(--green); }
+  .trainer-letter.wrong { color: var(--red); text-shadow: 0 0 40px var(--red); }
+  .trainer-morse-hint { font-size: 28px; letter-spacing: 8px; color: var(--text-dim); margin-bottom: 20px; min-height: 40px; transition: color 0.3s; }
+  .trainer-morse-hint.show { color: var(--amber); }
+  .trainer-input { font-size: 32px; letter-spacing: 8px; color: var(--amber); min-height: 44px; margin-bottom: 20px; text-shadow: 0 0 16px var(--amber-dim); }
+  .trainer-feedback { font-size: 13px; letter-spacing: 2px; height: 20px; transition: all 0.2s; }
+  .trainer-feedback.correct { color: var(--green); }
+  .trainer-feedback.wrong { color: var(--red); }
+  .stats-row { display: flex; gap: 24px; margin-top: 20px; justify-content: center; }
+  .stat { text-align: center; }
+  .stat-value { font-family: var(--display); font-size: 36px; color: var(--green); }
+  .stat-label { font-size: 10px; letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase; }
+  .hint-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 2px;
+    padding: 7px 14px; cursor: pointer; border-radius: 2px; transition: all 0.2s;
+    text-transform: uppercase; margin-top: 14px;
+  }
+  .hint-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+  /* REFERENCE */
+  #reference-panel { padding: 20px; }
+  .morse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
+  .morse-cell {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 10px; text-align: center; cursor: pointer; transition: all 0.15s;
+  }
+  .morse-cell:hover { border-color: var(--green-dim); background: var(--green-glow); }
+  .morse-cell .cell-letter { font-family: var(--display); font-size: 28px; color: var(--green); line-height: 1; }
+  .morse-cell .cell-code { font-size: 12px; letter-spacing: 3px; color: var(--amber); margin-top: 4px; }
+  .clear-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
+    padding: 5px 12px; cursor: pointer; border-radius: 2px; transition: all 0.2s; text-transform: uppercase;
+  }
+  .clear-btn:hover { border-color: var(--red); color: var(--red); }
+
+  /* No BLE support warning */
+  .no-ble {
+    background: var(--surface); border: 1px solid var(--red);
+    border-radius: 4px; padding: 16px 24px; margin: 20px;
+    color: var(--red); font-size: 13px; letter-spacing: 1px; display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="no-ble" id="no-ble">
+  Web Bluetooth не поддерживается. Используй Chrome на Android или Chrome на ПК с флагом #enable-experimental-web-platform-features
+</div>
+
+<header>
+  <div class="logo">MORSE</div>
+  <div class="status">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">НЕ ПОДКЛЮЧЕНО</span>
+  </div>
+  <button class="connect-btn" id="connect-btn" onclick="connectBLE()">ПОДКЛЮЧИТЬ</button>
+</header>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('decoder')">ДЕКОДЕР</button>
+  <button class="tab" onclick="switchTab('trainer')">ТРЕНАЖЁР</button>
+  <button class="tab" onclick="switchTab('reference')">ТАБЛИЦА</button>
+</div>
+
+<!-- DECODER -->
+<div class="panel active" id="decoder-panel">
+  <div class="current-morse">
+    <div>
+      <div class="morse-label">Входящий сигнал</div>
+      <div class="morse-symbols" id="current-morse">_</div>
+    </div>
+    <div style="width:1px;height:50px;background:var(--border)"></div>
+    <div class="decoded-letter" id="decoded-letter">—</div>
+    <div style="margin-left:auto">
+      <button class="clear-btn" onclick="clearOutput()">ОЧИСТИТЬ</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:16px;flex:1">
+    <div class="output-area" style="flex:2">
+      <div class="output-title">Текст</div>
+      <div id="output-text"></div>
+    </div>
+    <div class="output-area" style="flex:1;overflow-y:auto;max-height:350px">
+      <div class="output-title">История</div>
+      <div id="history"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TRAINER -->
+<div class="panel" id="trainer-panel">
+  <div class="trainer-card">
+    <div class="trainer-prompt-label">Отстукай эту букву</div>
+    <div class="trainer-letter" id="trainer-letter">А</div>
+    <div class="trainer-morse-hint" id="trainer-hint">·—</div>
+    <div class="trainer-input" id="trainer-input">_</div>
+    <div class="trainer-feedback" id="trainer-feedback"></div>
+    <button class="hint-btn" id="hint-btn" onclick="toggleHint()">ПОКАЗАТЬ ПОДСКАЗКУ</button>
+  </div>
+  <div class="stats-row">
+    <div class="stat"><div class="stat-value" id="stat-correct">0</div><div class="stat-label">Верно</div></div>
+    <div class="stat"><div class="stat-value" id="stat-wrong">0</div><div class="stat-label">Ошибок</div></div>
+    <div class="stat"><div class="stat-value" id="stat-streak">0</div><div class="stat-label">Серия</div></div>
+  </div>
+</div>
+
+<!-- REFERENCE -->
+<div class="panel" id="reference-panel">
+  <div class="morse-grid" id="morse-grid"></div>
+</div>
+
+<script>
+const SERVICE_UUID        = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+const MORSE = {
+  '.-':'А',    '-...':'Б',  '.--':'В',   '--.':'Г',   '-..':'Д',
+  '.':'Е',     '...-':'Ж',  '--..':'З',  '..':'И',    '.---':'Й',
+  '-.-':'К',   '.-..':'Л',  '--':'М',    '-.':'Н',    '---':'О',
+  '.--.':'П',  '.-.':'Р',   '...':'С',   '-':'Т',     '..-':'У',
+  '..-.':'Ф',  '....':'Х',  '-.-.':'Ц',  '---.':'Ч',  '----':'Ш',
+  '--.-':'Щ',  '--.--.':'Ъ','-.--':'Ы',  '-..-':'Ь',  '..-..':'Э',
+  '..--':'Ю',  '.-.-':'Я',
+  '-----':'0', '.----':'1', '..---':'2', '...--':'3', '....-':'4',
+  '.....':'5', '-....':'6', '--...':'7', '---..':'8', '----.':'9'
+};
+const REVERSE = Object.fromEntries(Object.entries(MORSE).map(([k,v])=>[v,k]));
+
+// Reference grid
+const grid = document.getElementById('morse-grid');
+Object.entries(MORSE).forEach(([code, letter]) => {
+  const cell = document.createElement('div');
+  cell.className = 'morse-cell';
+  cell.innerHTML = `<div class="cell-letter">${letter}</div><div class="cell-code">${code}</div>`;
+  grid.appendChild(cell);
+});
+
+// Check Web Bluetooth support
+if (!navigator.bluetooth) {
+  document.getElementById('no-ble').style.display = 'block';
+  document.getElementById('connect-btn').disabled = true;
+}
+
+// BLE state
+let bleDevice = null;
+let currentSymbol = '';
+let lastInputTime = 0;
+const SYMBOL_TIMEOUT = 800;
+let symbolTimer = null;
+
+async function connectBLE() {
+  const btn = document.getElementById('connect-btn');
+  if (bleDevice && bleDevice.gatt.connected) {
+    bleDevice.gatt.disconnect();
+    return;
+  }
+  try {
+    btn.disabled = true;
+    btn.textContent = 'ПОИСК...';
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'MorsePaddle' }],
+      optionalServices: [SERVICE_UUID]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+    const server  = await bleDevice.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    const char    = await service.getCharacteristic(CHARACTERISTIC_UUID);
+    await char.startNotifications();
+    char.addEventListener('characteristicvaluechanged', onNotify);
+    setConnected(true);
+  } catch(e) {
+    console.error(e);
+    setConnected(false);
+  }
+}
+
+function onDisconnected() {
+  setConnected(false);
+}
+
+function setConnected(ok) {
+  const btn = document.getElementById('connect-btn');
+  document.getElementById('status-dot').className = 'status-dot' + (ok ? ' connected' : '');
+  document.getElementById('status-text').textContent = ok ? 'ПОДКЛЮЧЕНО' : 'НЕ ПОДКЛЮЧЕНО';
+  btn.textContent = ok ? 'ОТКЛЮЧИТЬ' : 'ПОДКЛЮЧИТЬ';
+  btn.disabled = false;
+}
+
+function onNotify(e) {
+  const ch = String.fromCharCode(e.target.value.getUint8(0));
+  if (ch !== '.' && ch !== '-') return;
+
+  currentSymbol += ch;
+  lastInputTime = Date.now();
+
+  document.getElementById('current-morse').textContent = currentSymbol;
+  if (getActiveTab() === 'trainer') {
+    document.getElementById('trainer-input').textContent = currentSymbol;
+  }
+
+  clearTimeout(symbolTimer);
+  symbolTimer = setTimeout(flushSymbol, SYMBOL_TIMEOUT);
+}
+
+function flushSymbol() {
+  if (!currentSymbol) return;
+  const morse = currentSymbol;
+  const letter = MORSE[morse] || '?';
+  currentSymbol = '';
+
+  // decoder
+  document.getElementById('current-morse').textContent = '_';
+  const dl = document.getElementById('decoded-letter');
+  dl.textContent = letter;
+  dl.style.animation = 'none';
+  dl.offsetHeight;
+  dl.style.animation = 'pop 0.15s ease-out';
+
+  const span = document.createElement('span');
+  span.className = 'letter-entry';
+  span.textContent = letter;
+  document.getElementById('output-text').appendChild(span);
+
+  const row = document.createElement('div');
+  row.className = 'history-row';
+  const now = new Date();
+  const t = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+  row.innerHTML = `<span class="history-morse">${morse}</span><span class="history-letter">${letter}</span><span class="history-time">${t}</span>`;
+  const hist = document.getElementById('history');
+  hist.insertBefore(row, hist.firstChild);
+
+  if (getActiveTab() === 'trainer') checkTrainer(morse, letter);
+}
+
+// Trainer
+let hintVisible = false;
+let trainerCorrect = 0, trainerWrong = 0, trainerStreak = 0;
+let trainerCurrentLetter = 'А';
+let feedbackTimer = null;
+const TRAIN_LETTERS = 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЫЬЭЮЯ';
+
+function newTrainerLetter() {
+  trainerCurrentLetter = TRAIN_LETTERS[Math.floor(Math.random() * TRAIN_LETTERS.length)];
+  document.getElementById('trainer-letter').textContent = trainerCurrentLetter;
+  document.getElementById('trainer-letter').className = 'trainer-letter';
+  document.getElementById('trainer-input').textContent = '_';
+  document.getElementById('trainer-feedback').textContent = '';
+  document.getElementById('trainer-feedback').className = 'trainer-feedback';
+  hintVisible = false;
+  document.getElementById('trainer-hint').textContent = REVERSE[trainerCurrentLetter] || '?';
+  document.getElementById('trainer-hint').className = 'trainer-morse-hint';
+  document.getElementById('hint-btn').textContent = 'ПОКАЗАТЬ ПОДСКАЗКУ';
+}
+
+function toggleHint() {
+  hintVisible = !hintVisible;
+  document.getElementById('trainer-hint').className = 'trainer-morse-hint' + (hintVisible ? ' show' : '');
+  document.getElementById('hint-btn').textContent = hintVisible ? 'СКРЫТЬ ПОДСКАЗКУ' : 'ПОКАЗАТЬ ПОДСКАЗКУ';
+}
+
+function updateStats() {
+  document.getElementById('stat-correct').textContent = trainerCorrect;
+  document.getElementById('stat-wrong').textContent = trainerWrong;
+  document.getElementById('stat-streak').textContent = trainerStreak;
+}
+
+function checkTrainer(morse, letter) {
+  if (letter === trainerCurrentLetter) {
+    trainerCorrect++; trainerStreak++;
+    document.getElementById('trainer-letter').className = 'trainer-letter correct';
+    document.getElementById('trainer-feedback').textContent = 'ВЕРНО!';
+    document.getElementById('trainer-feedback').className = 'trainer-feedback correct';
+    updateStats();
+    if (feedbackTimer) clearTimeout(feedbackTimer);
+    feedbackTimer = setTimeout(newTrainerLetter, 900);
+  } else {
+    trainerWrong++; trainerStreak = 0;
+    document.getElementById('trainer-letter').className = 'trainer-letter wrong';
+    document.getElementById('trainer-feedback').textContent = `НЕВЕРНО — ты послал: ${letter}`;
+    document.getElementById('trainer-feedback').className = 'trainer-feedback wrong';
+    updateStats();
+    if (feedbackTimer) clearTimeout(feedbackTimer);
+    feedbackTimer = setTimeout(() => {
+      document.getElementById('trainer-letter').className = 'trainer-letter';
+      document.getElementById('trainer-input').textContent = '_';
+      document.getElementById('trainer-feedback').textContent = '';
+    }, 1200);
+  }
+}
+
+function clearOutput() {
+  document.getElementById('output-text').innerHTML = '';
+  document.getElementById('history').innerHTML = '';
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.classList.toggle('active', ['decoder','trainer','reference'][i] === name);
+  });
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(name + '-panel').classList.add('active');
+}
+
+function getActiveTab() {
+  const idx = [...document.querySelectorAll('.tab')].findIndex(t => t.classList.contains('active'));
+  return ['decoder','trainer','reference'][idx];
+}
+
+newTrainerLetter();
+</script>
+</body>
+</html>
